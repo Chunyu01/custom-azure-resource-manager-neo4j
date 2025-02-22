@@ -249,7 +249,7 @@ build_neo4j_conf_file() {
     echo "$(date) outside func , Printing coreMembers ${coreMembers}"
     sed -i -e '$a\dbms.cluster.discovery.version=V2_ONLY' \
        -e '$a\dbms.cluster.discovery.resolver_type=LIST' \
-       -e '$a\dbms.cluster.discovery.v2.endpoints='"${privateIP}:6000,${privateIP}:6000,${privateIP}:6000" \
+       -e '$a\dbms.cluster.discovery.v2.endpoints=10.0.0.4:6000,10.0.0.5:6000,10.0.0.6:6000' \
        /etc/neo4j/neo4j.conf
 
   fi
