@@ -247,7 +247,7 @@ build_neo4j_conf_file() {
     echo "dbms.cluster.minimum_initial_system_primaries_count=${nodeCount}" >> /etc/neo4j/neo4j.conf
     get_core_members
     echo "$(date) outside func , Printing coreMembers ${coreMembers}"
-    sed -i s/#dbms.cluster.discovery.endpoints=localhost:5000,localhost:5001,localhost:5002/dbms.cluster.discovery.endpoints=${coreMembers}/g /etc/neo4j/neo4j.conf\n"
+    echo "dbms.cluster.discovery.endpoints=\"${coreMembers}\"" >> /etc/neo4j/neo4j.conf
 
   fi
 }
