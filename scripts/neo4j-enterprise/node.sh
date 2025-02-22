@@ -247,8 +247,11 @@ build_neo4j_conf_file() {
     echo "dbms.cluster.minimum_initial_system_primaries_count=${nodeCount}" >> /etc/neo4j/neo4j.conf
     get_core_members
     echo "$(date) outside func , Printing coreMembers ${coreMembers}"
-    sed -i s/#dbms.cluster.discovery.endpoints=localhost:5000,localhost:5001,localhost:5002/dbms.cluster.discovery.endpoints="${coreMembers}"/g /etc/neo4j/neo4j.conf
- 
+    sed -i -e '$a\dbms.cluster.discovery.version=V2_ONLY' \
+       -e '$a\dbms.cluster.discovery.resolver_type=LIST' \
+       -e '$a\dbms.cluster.discovery.v2.endpoints='\"${privateIP}:6000,${privateIP}:6000,${privateIP}:6000\" \
+       /etc/neo4j/neo4j.conf
+
   fi
 }
 
