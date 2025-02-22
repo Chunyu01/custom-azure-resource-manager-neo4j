@@ -250,7 +250,7 @@ build_neo4j_conf_file() {
     sed -i '/^dbms.cluster.discovery.resolver_type=LIST$/d' /etc/neo4j/neo4j.conf
     echo "dbms.cluster.discovery.resolver_type=LIST" >> /etc/neo4j/neo4j.conf
     echo "dbms.cluster.discovery.version=V2_ONLY" >> /etc/neo4j/neo4j.conf
-    echo "dbms.cluster.discovery.v2.endpoints=\"${coreMembers}\"" >> /etc/neo4j/neo4j.conf
+    sed -i s/#dbms.cluster.discovery.v2.endpoints=localhost:6000,localhost:6001,localhost:6002/dbms.cluster.discovery.v2.endpoints="${coreMembers}"/g /etc/neo4j/neo4j.conf
 
   fi
 }
