@@ -184,14 +184,14 @@ start_neo4j() {
 }
 
 get_core_members() {
-  coreMembers=$(az vmss nic list -g "${resourceGroup}" --vmss-name "${vmScaleSetsName}" | jq '.[] | .ipConfigurations[] | .privateIPAddress' | sed 's/"//g;s/$/:5000/g' | tr '\n' ',' | sed 's/,$//g')
+  coreMembers=$(az vmss nic list -g "${resourceGroup}" --vmss-name "${vmScaleSetsName}" | jq '.[] | .ipConfigurations[] | .privateIPAddress' | sed 's/"//g;s/$/:6000/g' | tr '\n' ',' | sed 's/,$//g')
   echo "$(date) start of while , Printing coreMembers ${coreMembers}"
   counter=0
   while [[ (${#coreMembers} == 0 || ${coreMembers} == "null") && ${counter} -le 30 ]]; do
       echo "sleeping for 10 seconds"
       sleep 10
       ((counter=counter+1))
-      coreMembers=$(az vmss nic list -g "${resourceGroup}" --vmss-name "${vmScaleSetsName}" | jq '.[] | .ipConfigurations[] | .privateIPAddress' | sed 's/"//g;s/$/:5000/g' | tr '\n' ',' | sed 's/,$//g')
+      coreMembers=$(az vmss nic list -g "${resourceGroup}" --vmss-name "${vmScaleSetsName}" | jq '.[] | .ipConfigurations[] | .privateIPAddress' | sed 's/"//g;s/$/:6000/g' | tr '\n' ',' | sed 's/,$//g')
       echo "$(date) Inside while Printing coreMembers ${coreMembers}"
   done
   echo "$(date) End of func, Printing coreMembers ${coreMembers}"
@@ -239,20 +239,28 @@ build_neo4j_conf_file() {
 
   if [[ ${nodeCount} == 1 ]]; then
     echo "Running on a single node."
-  else
-    echo "Running on multiple nodes.  Configuring membership in neo4j.conf..."
+else
+    echo "Running on multiple nodes. Configuring membership in neo4j.conf..."
     sed -i s/#initial.dbms.default_primaries_count=1/initial.dbms.default_primaries_count=3/g /etc/neo4j/neo4j.conf
     sed -i s/#initial.dbms.default_secondaries_count=0/initial.dbms.default_secondaries_count=$(expr ${nodeCount} - 3)/g /etc/neo4j/neo4j.conf
+    
+    # Listen for Bolt on the private IP
     sed -i s/#server.bolt.listen_address=:7687/server.bolt.listen_address="${privateIP}":7687/g /etc/neo4j/neo4j.conf
+    
+    # Set minimum_initial_system_primaries_count to the total nodeCount
     echo "dbms.cluster.minimum_initial_system_primaries_count=${nodeCount}" >> /etc/neo4j/neo4j.conf
-    get_core_members
-    echo "$(date) outside func , Printing coreMembers ${coreMembers}"
-    sed -i -e '$a\dbms.cluster.discovery.version=V2_ONLY' \
-       -e '$a\dbms.cluster.discovery.resolver_type=LIST' \
-       -e '$a\dbms.cluster.discovery.v2.endpoints=10.0.0.4:6000,10.0.0.5:6000,10.0.0.6:6000' \
-       /etc/neo4j/neo4j.conf
 
-  fi
+    # Fetch core members from Azure VMSS NICs (see function below)
+    get_core_members
+    echo "$(date) outside func, Printing coreMembers: ${coreMembers}"
+
+    # Append discovery settings at the end of neo4j.conf using the coreMembers list
+    sed -i -e '$a\dbms.cluster.discovery.version=V2_ONLY' \
+           -e '$a\dbms.cluster.discovery.resolver_type=LIST' \
+           -e "\$a\dbms.cluster.discovery.v2.endpoints=${coreMembers}" \
+           /etc/neo4j/neo4j.conf
+fi
+
 }
 
 mount_data_disk
