@@ -184,21 +184,36 @@ start_neo4j() {
 }
 
 get_core_members() {
-  coreMembers=$(az vmss nic list -g "${resourceGroup}" --vmss-name "${vmScaleSetsName}" \
-    | jq -r '.[] | .ipConfigurations[] | select(.privateIPAddress != null) | .privateIPAddress + ":6000"' \
-    | paste -sd ',' -)
+  echo "Fetching VMSS NIC list for resource group: ${resourceGroup}, scale set: ${vmScaleSetsName}"
 
-  # Optionally retry if empty or null
+  # Fetch NIC list once and store in a variable
+  vmss_nics_json=$(az vmss nic list -g "${resourceGroup}" --vmss-name "${vmScaleSetsName}" --query "[].ipConfigurations[].privateIPAddress" -o json)
+
+  # Extract private IPs and append :6000 for Neo4j
+  coreMembers=$(echo "$vmss_nics_json" | jq -r '[.[] | select(. != null) | . + ":6000"] | join(",")')
+
   counter=0
-  while [[ (-z "$coreMembers" || "$coreMembers" == "null") && $counter -le 30 ]]; do
-    echo "No IP found yet, sleeping 10s..."
-    sleep 10
+  max_retries=10  # Stop after 10 attempts
+
+  while [[ (-z "$coreMembers" || "$coreMembers" == "null") && $counter -lt $max_retries ]]; do
+    echo "No IPs found yet, retrying in 5s... (Attempt: $((counter + 1))/$max_retries)"
+    sleep 5
     ((counter++))
-    coreMembers=$(az vmss nic list -g "${resourceGroup}" --vmss-name "${vmScaleSetsName}" \
-      | jq -r '.[] | .ipConfigurations[] | select(.privateIPAddress != null) | .privateIPAddress + ":6000"' \
-      | paste -sd ',' -)
+
+    # Fetch again and retry processing
+    vmss_nics_json=$(az vmss nic list -g "${resourceGroup}" --vmss-name "${vmScaleSetsName}" --query "[].ipConfigurations[].privateIPAddress" -o json)
+    coreMembers=$(echo "$vmss_nics_json" | jq -r '[.[] | select(. != null) | . + ":6000"] | join(",")')
   done
+
+  # If still no IPs found, fail fast
+  if [[ -z "$coreMembers" || "$coreMembers" == "null" ]]; then
+    echo "ERROR: No private IPs found after $max_retries attempts. Exiting."
+    exit 1
+  fi
+
+  echo "Discovered core members: $coreMembers"
 }
+
 
 
 build_neo4j_conf_file() {
