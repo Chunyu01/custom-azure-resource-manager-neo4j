@@ -184,46 +184,21 @@ start_neo4j() {
 }
 
 get_core_members() {
-  echo "Fetching VMSS NIC list for resource group: ${resourceGroup}, scale set: ${vmScaleSetsName}"
+  echo "Building default IP list, starting at 10.0.0.4"
 
-  # Fetch NIC list once and store in a variable
-  vmss_nics_json=$(az vmss nic list -g "${resourceGroup}" --vmss-name "${vmScaleSetsName}" --query "[].ipConfigurations[].privateIPAddress" -o json)
-
-  # Extract private IPs and append :6000 for Neo4j
-  coreMembers=$(echo "$vmss_nics_json" | jq -r '[.[] | select(. != null) | . + ":6000"] | join(",")')
-
-  counter=0
-  max_retries=3  # Stop after 3 attempts
-
-  while [[ (-z "$coreMembers" || "$coreMembers" == "null") && $counter -lt $max_retries ]]; do
-    echo "No IPs found yet, retrying in 5s... (Attempt: $((counter + 1))/$max_retries)"
-    sleep 5
-    ((counter++))
-
-    # Fetch again and retry processing
-    vmss_nics_json=$(az vmss nic list -g "${resourceGroup}" --vmss-name "${vmScaleSetsName}" --query "[].ipConfigurations[].privateIPAddress" -o json)
-    coreMembers=$(echo "$vmss_nics_json" | jq -r '[.[] | select(. != null) | . + ":6000"] | join(",")')
+  coreMembers=""
+  for i in $(seq 0 $((nodeCount - 1))); do
+    # Start at 10.0.0.4, increment for each node
+    ip="10.0.0.$((4 + i))"
+    if [[ -z "$coreMembers" ]]; then
+      coreMembers="${ip}:6000"
+    else
+      coreMembers="${coreMembers},${ip}:6000"
+    fi
   done
-
-  # If still no IPs found, generate default IPs starting from 10.0.0.4
-  if [[ -z "$coreMembers" || "$coreMembers" == "null" ]]; then
-    echo "ERROR: No private IPs found after $max_retries attempts. Falling back to default IPs."
-
-    coreMembers=""
-    for i in $(seq 0 $((nodeCount - 1))); do
-      ip="10.0.0.$((4 + i))"  # Start at 10.0.0.4, incrementing for each node
-      if [[ -z "$coreMembers" ]]; then
-        coreMembers="${ip}:6000"
-      else
-        coreMembers="${coreMembers},${ip}:6000"
-      fi
-    done
-  fi
 
   echo "Final core members: $coreMembers"
 }
-
-
 
 
 build_neo4j_conf_file() {
