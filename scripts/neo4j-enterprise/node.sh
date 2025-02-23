@@ -193,7 +193,7 @@ get_core_members() {
   coreMembers=$(echo "$vmss_nics_json" | jq -r '[.[] | select(. != null) | . + ":6000"] | join(",")')
 
   counter=0
-  max_retries=10  # Stop after 10 attempts
+  max_retries=3  # Stop after 3 attempts
 
   while [[ (-z "$coreMembers" || "$coreMembers" == "null") && $counter -lt $max_retries ]]; do
     echo "No IPs found yet, retrying in 5s... (Attempt: $((counter + 1))/$max_retries)"
@@ -205,14 +205,24 @@ get_core_members() {
     coreMembers=$(echo "$vmss_nics_json" | jq -r '[.[] | select(. != null) | . + ":6000"] | join(",")')
   done
 
-  # If still no IPs found, fail fast
+  # If still no IPs found, generate default IPs starting from 10.0.0.4
   if [[ -z "$coreMembers" || "$coreMembers" == "null" ]]; then
-    echo "ERROR: No private IPs found after $max_retries attempts. Exiting."
-    exit 1
+    echo "ERROR: No private IPs found after $max_retries attempts. Falling back to default IPs."
+
+    coreMembers=""
+    for i in $(seq 0 $((nodeCount - 1))); do
+      ip="10.0.0.$((4 + i))"  # Start at 10.0.0.4, incrementing for each node
+      if [[ -z "$coreMembers" ]]; then
+        coreMembers="${ip}:6000"
+      else
+        coreMembers="${coreMembers},${ip}:6000"
+      fi
+    done
   fi
 
-  echo "Discovered core members: $coreMembers"
+  echo "Final core members: $coreMembers"
 }
+
 
 
 
