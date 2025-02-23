@@ -184,18 +184,22 @@ start_neo4j() {
 }
 
 get_core_members() {
-  coreMembers=$(az vmss nic list -g "${resourceGroup}" --vmss-name "${vmScaleSetsName}" | jq '.[] | .ipConfigurations[] | .privateIPAddress' | sed 's/"//g;s/$/:6000/g' | tr '\n' ',' | sed 's/,$//g')
-  echo "$(date) start of while , Printing coreMembers ${coreMembers}"
+  coreMembers=$(az vmss nic list -g "${resourceGroup}" --vmss-name "${vmScaleSetsName}" \
+    | jq -r '.[] | .ipConfigurations[] | select(.privateIPAddress != null) | .privateIPAddress + ":6000"' \
+    | paste -sd ',' -)
+
+  # Optionally retry if empty or null
   counter=0
-  while [[ (${#coreMembers} == 0 || ${coreMembers} == "null") && ${counter} -le 30 ]]; do
-      echo "sleeping for 10 seconds"
-      sleep 10
-      ((counter=counter+1))
-      coreMembers=$(az vmss nic list -g "${resourceGroup}" --vmss-name "${vmScaleSetsName}" | jq '.[] | .ipConfigurations[] | .privateIPAddress' | sed 's/"//g;s/$/:6000/g' | tr '\n' ',' | sed 's/,$//g')
-      echo "$(date) Inside while Printing coreMembers ${coreMembers}"
+  while [[ (-z "$coreMembers" || "$coreMembers" == "null") && $counter -le 30 ]]; do
+    echo "No IP found yet, sleeping 10s..."
+    sleep 10
+    ((counter++))
+    coreMembers=$(az vmss nic list -g "${resourceGroup}" --vmss-name "${vmScaleSetsName}" \
+      | jq -r '.[] | .ipConfigurations[] | select(.privateIPAddress != null) | .privateIPAddress + ":6000"' \
+      | paste -sd ',' -)
   done
-  echo "$(date) End of func, Printing coreMembers ${coreMembers}"
 }
+
 
 build_neo4j_conf_file() {
   local -r privateIP="$(hostname -i | awk '{print $NF}')"
